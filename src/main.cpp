@@ -11,8 +11,24 @@
 static void hook_block(uc_engine *uc, uint64_t address, uint32_t size,
                        void *user_data)
 {
-    printf(">>> Tracing basic block at 0x%" PRIx64 ", block size = 0x%x\n",
+    printf(">>> Tracing basic block at 0x%" PRIx32 ", block size = 0x%x\n",
            address, size);
+}
+
+void uc_reg_dump(uc_engine *uc) {
+    #define DUMP_REG(name) do { \
+        uint64_t val; \
+        uc_reg_read(uc, UC_ARM_REG_##name, &val); \
+        printf("%s = 0x%08x ", #name, val); \
+    } while (0)
+
+    DUMP_REG(PC);
+    DUMP_REG(R0);
+    DUMP_REG(R1);
+    DUMP_REG(R2);
+    DUMP_REG(R3);
+    DUMP_REG(R4);
+    printf("\n");
 }
 
 static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
@@ -23,8 +39,14 @@ static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
     uc_mem_read(uc, address, &insn, size);
     cs_insn* insn_info;
     cs_disasm(cs, insn, size, address, 1, &insn_info);
-    printf(">>> %s %s\tpc: 0x%08x\n", insn_info->mnemonic, insn_info->op_str, address);
+    char buf[256];
+    size_t len = sprintf(buf, ">>> %s %s ", insn_info->mnemonic, insn_info->op_str);
+    const int max_len = 34;
+    int pad = max_len - len;
+    sprintf(buf + len, "%*s", pad, " ");
+    printf("%s ", buf);
     cs_free(insn_info, 1);
+    uc_reg_dump(uc);
 }
 
 static void hook_mem_fetch(uc_engine *uc, uc_mem_type type,
@@ -32,6 +54,14 @@ static void hook_mem_fetch(uc_engine *uc, uc_mem_type type,
                            void *user_data)
 {
     printf(">>> Memory fetch at 0x%" PRIx64 ", size = %u, value = 0x%" PRIx64 "\n",
+           address, size, value);
+}
+
+static void hook_write_invalid(uc_engine *uc, uc_mem_type type,
+                               uint64_t address, int size, int64_t value,
+                               void *user_data)
+{
+    printf(">>> Write invalid at 0x%" PRIx64 ", size = %u, value = 0x%" PRIx64 "\n",
            address, size, value);
 }
 
@@ -97,6 +127,8 @@ int main(int argc, char** argv) {
     UCD(uc_mem_map(uc, 0x40000000, 0x100000, UC_PROT_ALL));
     UCD(uc_mem_map(uc, 0x50000000, 0x100000, UC_PROT_ALL));
 
+    UCD(uc_mem_map(uc, 0x1A002000, 0x1000, UC_PROT_ALL)); // l2 cache
+
     BlsStream kprx_auth = bls.get("kprx_auth_sm.self"); 
     Buffer kprx_auth_buf(kprx_auth.size);
     kprx_auth.read(kprx_auth.size, kprx_auth_buf.data());
@@ -134,7 +166,8 @@ int main(int argc, char** argv) {
     //UCD(uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, (void*)hook_block, NULL, 1, 0));
     UCD(uc_hook_add(uc, &trace2, UC_HOOK_CODE, (void*)hook_code, (void*)cs, 0, 0xFFFFFFFF));
     UCD(uc_hook_add(uc, &trace3, UC_HOOK_MEM_FETCH_UNMAPPED, (void*)hook_mem_fetch, NULL, 0, 0xFFFFFFFF));
+    UCD(uc_hook_add(uc, &trace4, UC_HOOK_MEM_WRITE_UNMAPPED, (void*)hook_write_invalid, NULL, 0, 0xFFFFFFFF));
     UCD(uc_hook_add(uc, &trace4, UC_HOOK_INSN_INVALID, (void*)hook_insn_invalid, NULL, 0, 0xFFFFFFFF));
 
-    UCD(uc_emu_start(uc, 0x00000000, 0xFFFFFFFF, 0, 100));
+    UCD(uc_emu_start(uc, 0x00000000, 0xFFFFFFFF, 0, 1000));
 }
