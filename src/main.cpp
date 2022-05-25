@@ -6,6 +6,7 @@
 #include "sce_decrypt.hpp"
 
 #include <unicorn/unicorn.h>
+#include <capstone/capstone.h>
 
 static void hook_block(uc_engine *uc, uint64_t address, uint32_t size,
                        void *user_data)
@@ -17,12 +18,13 @@ static void hook_block(uc_engine *uc, uint64_t address, uint32_t size,
 static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
                       void *user_data)
 {
-    printf(">>> Tracing instruction at 0x%" PRIx64
-           ", instruction size = 0x%x\n",
-           address, size);
-    uint32_t insn;
-    uc_mem_read(uc, address, &insn, sizeof(insn));
-    printf(">>> Instruction is 0x%x\n", insn);
+    csh cs = (csh)user_data;
+    uint8_t insn[size];
+    uc_mem_read(uc, address, &insn, size);
+    cs_insn* insn_info;
+    cs_disasm(cs, insn, size, address, 1, &insn_info);
+    printf(">>> %s %s\tpc: 0x%08x\n", insn_info->mnemonic, insn_info->op_str, address);
+    cs_free(insn_info, 1);
 }
 
 static void hook_mem_fetch(uc_engine *uc, uc_mem_type type,
@@ -57,7 +59,7 @@ static void hook_insn_invalid(uc_engine *uc, uint32_t insn, void *user_data)
 
 int main(int argc, char** argv) {
     uc_engine* uc;
-    UCD(uc_open(UC_ARCH_ARM, UC_MODE_ARM946, &uc));
+    UCD(uc_open(UC_ARCH_ARM, UC_MODE_THUMB, &uc));
 
     /*
     std::string filename = "";
@@ -78,6 +80,7 @@ int main(int argc, char** argv) {
     BlsParser bls(boot_pkg);
 
     // basic map:
+    // skbl reset vector = 0x0
     // kprx auth  = 0x40000500
     // prog_rvk   = 0x40009B00
     // skbl param = 0x4001FD00 (without magic)
@@ -124,10 +127,12 @@ int main(int argc, char** argv) {
     const auto nsbl = skbl_segs.at(3);
     UC_MEM_ADD(uc, 0x50000000, nsbl);
 
+    csh cs;
+    cs_open(CS_ARCH_ARM, CS_MODE_ARM, &cs);
 
     uc_hook trace1, trace2, trace3, trace4;
-    UCD(uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, (void*)hook_block, NULL, 1, 0));
-    UCD(uc_hook_add(uc, &trace2, UC_HOOK_CODE, (void*)hook_code, NULL, 0, 0xFFFFFFFF));
+    //UCD(uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, (void*)hook_block, NULL, 1, 0));
+    UCD(uc_hook_add(uc, &trace2, UC_HOOK_CODE, (void*)hook_code, (void*)cs, 0, 0xFFFFFFFF));
     UCD(uc_hook_add(uc, &trace3, UC_HOOK_MEM_FETCH_UNMAPPED, (void*)hook_mem_fetch, NULL, 0, 0xFFFFFFFF));
     UCD(uc_hook_add(uc, &trace4, UC_HOOK_INSN_INVALID, (void*)hook_insn_invalid, NULL, 0, 0xFFFFFFFF));
 

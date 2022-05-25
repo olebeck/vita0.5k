@@ -55,7 +55,6 @@ BlsParser::BlsParser(Stream& s) : s(s) {
     // Read and verify BLS header
     s.seek(0, StreamSeek::Set);
     header = s.read_t<BlsHeader>();
-    printf("0x%8x 0x%8x\n", header.magic, BLS_MAGIC);
     assert(header.magic == BLS_MAGIC);
     assert(header.version <= 2);
 }
