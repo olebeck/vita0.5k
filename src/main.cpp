@@ -50,7 +50,25 @@ static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
         uc_reg_dump(uc);
 
         if(insn_info->id == ARM_INS_B) {
-            printf(">>> Jumping to 0x%08x\n", insn_info->detail->arm.operands[0].imm);
+            bool is_jump = false;
+
+            U32 cpsr;
+            uc_reg_read(uc, UC_ARM_REG_CPSR, &cpsr);
+
+            if(insn_info->detail->arm.cc == ARM_CC_AL) {
+                is_jump = true;
+            } else if(insn_info->detail->arm.cc == ARM_CC_EQ) {
+                is_jump = (cpsr & 0x40000000) != 0;
+            } else if(insn_info->detail->arm.cc == ARM_CC_NE) {
+                is_jump = (cpsr & 0x40000000) == 0;
+            }
+
+            U32 addr = insn_info->detail->arm.operands[0].imm;
+            if(is_jump) {
+                printf("\n// Jump to 0x%08x\n", addr);
+            } else {
+                printf("// Not jumping\n");
+            }
         }
         cs_free(insn_info, 1);
     } else {
@@ -149,12 +167,12 @@ int main(int argc, char** argv) {
     BlsStream kprx_auth = bls.get("kprx_auth_sm.self"); 
     Buffer kprx_auth_buf(kprx_auth.size);
     kprx_auth.read(kprx_auth.size, kprx_auth_buf.data());
-    UC_MEM_ADD(uc, 0x40000500, kprx_auth_buf);
+    UC_MEM_ADD(uc, ADDR_SECURE_DRAM + 0x500, kprx_auth_buf);
 
     BlsStream prog_rvk = bls.get("prog_rvk.srvk");
     Buffer prog_rvk_buf(prog_rvk.size);
     kprx_auth.read(prog_rvk.size, prog_rvk_buf.data());
-    UC_MEM_ADD(uc, 0x40009B00, prog_rvk_buf);
+    UC_MEM_ADD(uc, ADDR_SECURE_DRAM + 0x9B00, prog_rvk_buf);
 
 
     BlsStream skbl = bls.get("kernel_boot_loader.self");
@@ -166,11 +184,11 @@ int main(int argc, char** argv) {
 
     // load segment 0
     const auto skbl_seg0 = skbl_segs.at(1);
-    UC_MEM_ADD(uc, 0x40020000, skbl_seg0);
+    UC_MEM_ADD(uc, ADDR_SECURE_DRAM + 0x20000, skbl_seg0);
 
     // load segment 1
     const auto skbl_seg1 = skbl_segs.at(2);
-    UC_MEM_ADD(uc, 0x40057100, skbl_seg1);
+    UC_MEM_ADD(uc, ADDR_SECURE_DRAM + 0x57100, skbl_seg1);
 
     // load nsbl
     const auto nsbl = skbl_segs.at(3);
