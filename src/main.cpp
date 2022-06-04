@@ -5,6 +5,8 @@
 #include "software/keys.hpp"
 #include "software/sce_decrypt.hpp"
 
+#include <common/cp15_info.h>
+
 #include <unicorn/unicorn.h>
 #include <capstone/capstone.h>
 
@@ -28,8 +30,26 @@ void uc_reg_dump(uc_engine *uc) {
     DUMP_REG(R2);
     DUMP_REG(R3);
     DUMP_REG(R4);
-    printf("\n");
     //usleep(100000);
+}
+
+
+void print_cp15_instruction(cs_insn* insn) {
+    auto mnemonic = std::string(insn->mnemonic);
+    auto processor = insn->detail->arm.operands[0].reg;
+    auto idk1 = insn->detail->arm.operands[1].reg;
+    auto _register = insn->detail->arm.operands[2].reg;
+    auto cmd0 = insn->detail->arm.operands[3].imm;
+    auto cmd1 = insn->detail->arm.operands[4].imm;
+    auto cmd2 = insn->detail->arm.operands[5].imm;
+
+    char buffer[256];
+    snprintf(buffer, 256, "%s p%d %d <Rd> c%d c%d %d", mnemonic.c_str(), processor, idk1, cmd0, cmd1, cmd2);
+    auto key = std::string(buffer);
+    if(cp15_ops.count(key))
+        printf("  (CP15: %s)", cp15_ops.at(key).c_str());
+    else
+        printf("  (CP15: unknown)");
 }
 
 static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
@@ -67,10 +87,16 @@ static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
             if(is_jump) {
                 printf("\n// Jump to 0x%08x\n", addr);
             } else {
-                printf("// Not jumping\n");
+                printf("// Not jumping");
             }
         }
+        
+        if(insn_info->id == ARM_INS_MCR || insn_info->id == ARM_INS_MRC) {
+            print_cp15_instruction(insn_info);
+        }
+
         cs_free(insn_info, 1);
+        printf("\n");
     } else {
         printf(">>> Failed to disassemble instruction! %08x\n", insn);
     }
