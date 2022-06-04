@@ -35,7 +35,7 @@ void uc_reg_dump(uc_engine *uc) {
 
 
 void print_cp15_instruction(cs_insn* insn) {
-    auto mnemonic = std::string(insn->mnemonic);
+    auto mnemonic = insn->mnemonic;
     auto processor = insn->detail->arm.operands[0].reg;
     auto idk1 = insn->detail->arm.operands[1].reg;
     auto _register = insn->detail->arm.operands[2].reg;
@@ -44,13 +44,24 @@ void print_cp15_instruction(cs_insn* insn) {
     auto cmd2 = insn->detail->arm.operands[5].imm;
 
     char buffer[256];
-    snprintf(buffer, 256, "%s p%d %d <Rd> c%d c%d %d", mnemonic.c_str(), processor, idk1, cmd0, cmd1, cmd2);
+    snprintf(buffer, 256, "%s p%d %d <Rd> c%d c%d %d", mnemonic, processor, idk1, cmd0, cmd1, cmd2);
     auto key = std::string(buffer);
     if(cp15_ops.count(key))
         printf("  (CP15: %s)", cp15_ops.at(key).c_str());
     else
         printf("  (CP15: unknown)");
 }
+
+#define PSR_F_BIT	0x00000040	/* >= V4, but not V7M */
+#define PSR_I_BIT	0x00000080	/* >= V4, but not V7M */
+#define PSR_A_BIT	0x00000100	/* >= V6, but not V7M */
+#define PSR_E_BIT	0x00000200	/* >= V6, but not V7M */
+#define PSR_J_BIT	0x01000000	/* >= V5J, but not V7M */
+#define PSR_Q_BIT	0x08000000	/* >= V5E, including V7M */
+#define PSR_V_BIT	0x10000000
+#define PSR_C_BIT	0x20000000
+#define PSR_Z_BIT	0x40000000
+#define PSR_N_BIT	0x80000000
 
 static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
                       void *user_data)
@@ -70,21 +81,65 @@ static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
         uc_reg_dump(uc);
 
         if(insn_info->id == ARM_INS_B) {
-            bool is_jump = false;
+            bool will_jump = false;
 
             U32 cpsr;
             uc_reg_read(uc, UC_ARM_REG_CPSR, &cpsr);
 
-            if(insn_info->detail->arm.cc == ARM_CC_AL) {
-                is_jump = true;
-            } else if(insn_info->detail->arm.cc == ARM_CC_EQ) {
-                is_jump = (cpsr & 0x40000000) != 0;
-            } else if(insn_info->detail->arm.cc == ARM_CC_NE) {
-                is_jump = (cpsr & 0x40000000) == 0;
+            switch (insn_info->detail->arm.cc)
+            {
+            case ARM_CC_EQ:
+                will_jump = (cpsr & PSR_Z_BIT) != 0;
+                break;
+            case ARM_CC_NE:
+                will_jump = (cpsr & PSR_Z_BIT) == 0;
+                break;
+            case ARM_CC_HS:
+                will_jump = (cpsr & PSR_C_BIT) != 0;
+                break;
+            case ARM_CC_LO:
+                will_jump = (cpsr & PSR_C_BIT) == 0;
+                break;
+            case ARM_CC_MI:
+                will_jump = (cpsr & PSR_N_BIT) != 0;
+                break;
+            case ARM_CC_PL:
+                will_jump = (cpsr & PSR_N_BIT) == 0;
+                break;
+            case ARM_CC_VS:
+                will_jump = (cpsr & PSR_V_BIT) != 0;
+                break;
+            case ARM_CC_VC:
+                will_jump = (cpsr & PSR_V_BIT) == 0;
+                break;
+            case ARM_CC_HI:
+                will_jump = (cpsr & (PSR_C_BIT | PSR_Z_BIT)) == (PSR_C_BIT | PSR_Z_BIT);
+                break;
+            case ARM_CC_LS:
+                will_jump = (cpsr & (PSR_C_BIT | PSR_Z_BIT)) != (PSR_C_BIT | PSR_Z_BIT);
+                break;
+            case ARM_CC_GE:
+                will_jump = (cpsr & (PSR_N_BIT ^ PSR_V_BIT)) == 0;
+                break;
+            case ARM_CC_LT:
+                will_jump = (cpsr & (PSR_N_BIT ^ PSR_V_BIT)) != 0;
+                break;
+            case ARM_CC_GT:
+                will_jump = ((cpsr & (PSR_Z_BIT | PSR_N_BIT ^ PSR_V_BIT)) == 0);
+                break;
+            case ARM_CC_LE:
+                will_jump = ((cpsr & (PSR_Z_BIT | PSR_N_BIT ^ PSR_V_BIT)) != 0);
+                break;
+            case ARM_CC_AL:
+                will_jump = true;
+                break;
+            default:
+                printf("  (unhandled condition) %d\n", insn_info->detail->arm.cc);
+                exit(0);
             }
 
             U32 addr = insn_info->detail->arm.operands[0].imm;
-            if(is_jump) {
+            if(will_jump) {
                 printf("\n// Jump to 0x%08x\n", addr);
             } else {
                 printf("// Not jumping");
@@ -231,5 +286,5 @@ int main(int argc, char** argv) {
     UCD(uc_hook_add(uc, &trace4, UC_HOOK_MEM_WRITE_UNMAPPED, (void*)hook_write_invalid, NULL, 0, 0xFFFFFFFF));
     UCD(uc_hook_add(uc, &trace4, UC_HOOK_INSN_INVALID, (void*)hook_insn_invalid, NULL, 0, 0xFFFFFFFF));
 
-    UCD(uc_emu_start(uc, ADDR_ARM_BOOT, 0xFFFFFFFF, 0, 1000));
+    UCD(uc_emu_start(uc, ADDR_ARM_BOOT, 0xFFFFFFFF, 0, 9000));
 }
