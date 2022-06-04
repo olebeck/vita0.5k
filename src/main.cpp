@@ -1,9 +1,9 @@
 #include <string>
-#include "stream.hpp"
-#include "pup.hpp"
-#include "bls.hpp"
-#include "keys.hpp"
-#include "sce_decrypt.hpp"
+#include "common/stream.hpp"
+#include "software/pup.hpp"
+#include "software/bls.hpp"
+#include "software/keys.hpp"
+#include "software/sce_decrypt.hpp"
 
 #include <unicorn/unicorn.h>
 #include <capstone/capstone.h>
@@ -19,7 +19,7 @@ void uc_reg_dump(uc_engine *uc) {
     #define DUMP_REG(name) do { \
         uint64_t val; \
         uc_reg_read(uc, UC_ARM_REG_##name, &val); \
-        printf("%s = 0x%08x ", #name, val); \
+        printf(#name " = 0x%08x " , val); \
     } while (0)
 
     DUMP_REG(PC);
@@ -29,6 +29,7 @@ void uc_reg_dump(uc_engine *uc) {
     DUMP_REG(R3);
     DUMP_REG(R4);
     printf("\n");
+    //usleep(100000);
 }
 
 static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
@@ -38,15 +39,23 @@ static void hook_code(uc_engine *uc, uint64_t address, uint32_t size,
     uint8_t insn[size];
     uc_mem_read(uc, address, &insn, size);
     cs_insn* insn_info;
-    cs_disasm(cs, insn, size, address, 1, &insn_info);
-    char buf[256];
-    size_t len = sprintf(buf, ">>> %s %s ", insn_info->mnemonic, insn_info->op_str);
-    const int max_len = 34;
-    int pad = max_len - len;
-    sprintf(buf + len, "%*s", pad, " ");
-    printf("%s ", buf);
-    cs_free(insn_info, 1);
-    uc_reg_dump(uc);
+    int ret = cs_disasm(cs, insn, size, address, 1, &insn_info);
+    if(ret > 0) {
+        char buf[256];
+        size_t len = sprintf(buf, ">>> %s %s", insn_info->mnemonic, insn_info->op_str);
+        const int max_len = 34;
+        int pad = max_len - len;
+        sprintf(buf + len, "%*s", pad, " ");
+        printf("%s ", buf);
+        uc_reg_dump(uc);
+
+        if(insn_info->id == ARM_INS_B) {
+            printf(">>> Jumping to 0x%08x\n", insn_info->detail->arm.operands[0].imm);
+        }
+        cs_free(insn_info, 1);
+    } else {
+        printf(">>> Failed to disassemble instruction! %08x\n", insn);
+    }
 }
 
 static void hook_mem_fetch(uc_engine *uc, uc_mem_type type,
@@ -86,6 +95,13 @@ static void hook_insn_invalid(uc_engine *uc, uint32_t insn, void *user_data)
 #define align(x,y) (((x) + (y) - 1) & ~((y) - 1))
 #define align_lower(x,y) ((x) & ~((y) - 1))
 
+#define ADDR_ARM_BOOT 0x00000000
+#define SIZE_ARM_BOOT 0x8000
+#define ADDR_SECURE_DRAM 0x40000000
+#define SIZE_SECURE_DRAM (ADDR_SHARED_RAM - ADDR_SECURE_DRAM)
+#define ADDR_SHARED_RAM 0x40200000
+#define SIZE_SHARED_RAM 0x7FE00000
+
 
 int main(int argc, char** argv) {
     uc_engine* uc;
@@ -119,15 +135,16 @@ int main(int argc, char** argv) {
     // skbl param = 0x40073570 (with magic)
     // nsbl       = 0x50000000 (arzl compressed)
 
-    #define UC_MEM_ADD(uc, addr, buf) do { \
-        UCD(uc_mem_write(uc, addr, buf.data(), buf.size())); \
-    } while (0);
+    #define UC_MEM_ADD(uc, addr, buf) UCD(uc_mem_write(uc, addr, buf.data(), buf.size()));
 
-    UCD(uc_mem_map(uc, 0x0, 0x1000, UC_PROT_ALL));
-    UCD(uc_mem_map(uc, 0x40000000, 0x100000, UC_PROT_ALL));
-    UCD(uc_mem_map(uc, 0x50000000, 0x100000, UC_PROT_ALL));
+    UCD(uc_mem_map(uc, ADDR_ARM_BOOT, SIZE_ARM_BOOT, UC_PROT_ALL));
+    UCD(uc_mem_map(uc, ADDR_SECURE_DRAM, SIZE_SECURE_DRAM, UC_PROT_ALL));
+    UCD(uc_mem_map(uc, ADDR_SHARED_RAM, SIZE_SHARED_RAM, UC_PROT_ALL)); // memory
 
+    UCD(uc_mem_map(uc, 0x1A000000, 0x2000, UC_PROT_ALL)); // interrupt controller
     UCD(uc_mem_map(uc, 0x1A002000, 0x1000, UC_PROT_ALL)); // l2 cache
+
+    
 
     BlsStream kprx_auth = bls.get("kprx_auth_sm.self"); 
     Buffer kprx_auth_buf(kprx_auth.size);
@@ -145,7 +162,7 @@ int main(int argc, char** argv) {
 
     // load reset vector
     const auto skbl_reset_vector = skbl_segs.at(0);
-    UC_MEM_ADD(uc, 0x00000000, skbl_reset_vector);
+    UC_MEM_ADD(uc, ADDR_ARM_BOOT, skbl_reset_vector);
 
     // load segment 0
     const auto skbl_seg0 = skbl_segs.at(1);
@@ -161,6 +178,7 @@ int main(int argc, char** argv) {
 
     csh cs;
     cs_open(CS_ARCH_ARM, CS_MODE_ARM, &cs);
+    cs_option(cs, CS_OPT_DETAIL, CS_OPT_ON);
 
     uc_hook trace1, trace2, trace3, trace4;
     //UCD(uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, (void*)hook_block, NULL, 1, 0));
@@ -169,5 +187,5 @@ int main(int argc, char** argv) {
     UCD(uc_hook_add(uc, &trace4, UC_HOOK_MEM_WRITE_UNMAPPED, (void*)hook_write_invalid, NULL, 0, 0xFFFFFFFF));
     UCD(uc_hook_add(uc, &trace4, UC_HOOK_INSN_INVALID, (void*)hook_insn_invalid, NULL, 0, 0xFFFFFFFF));
 
-    UCD(uc_emu_start(uc, 0x00000000, 0xFFFFFFFF, 0, 1000));
+    UCD(uc_emu_start(uc, ADDR_ARM_BOOT, 0xFFFFFFFF, 0, 1000));
 }

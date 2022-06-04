@@ -1,13 +1,13 @@
 
 #pragma once
 
-#include "types.hpp"
 #include <map>
 #include <vector>
 #include <stdint.h>
 #include <ctype.h>
 #include <botan/key_filt.h>
 
+#include <common/stream.hpp>
 
 struct Key {
     U64 minver;

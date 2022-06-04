@@ -10,8 +10,8 @@
 
 #pragma once
 
-#include "types.hpp"
-#include "stream.hpp"
+#include <common/types.hpp>
+#include <common/stream.hpp>
 
 #include <string>
 #include <string_view>

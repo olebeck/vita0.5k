@@ -31,7 +31,7 @@ def b2_hex(b: bytes):
     o = "{"
     for i in range(len(b)):
         o += "0x" + h[i*2:i*2+2] + ","
-    return o + "}"
+    return o[:-1] + "}"
 
 for type_i, (keytype, key_items) in enumerate(SCE_KEYS._store.items()):
     indent += 1
