@@ -1,8 +1,13 @@
-#include "stream.hpp"
+#include "stream.h"
 #include <stdexcept>
 #include <cstring>
 #include <botan/pipe.h>
 
+
+Buffer::Buffer(Stream& s) : std::vector<uint8_t>(s.size())
+{
+    s.read(size(), data());
+}
 
 void Buffer::Decrypt(Botan::Keyed_Filter* cipher) {
     Botan::Pipe pipe(cipher);
@@ -45,7 +50,7 @@ U64 FileStream::tell() const
 }
 
 
-BufferStream::BufferStream(Buffer buffer) : buffer(buffer), offset(0), size(buffer.size()) { };
+BufferStream::BufferStream(Buffer buffer) : buffer(buffer), offset(0) { };
 
 BufferStream::~BufferStream() { };
 

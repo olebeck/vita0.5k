@@ -5,8 +5,8 @@
 #include <stdexcept>
 #include <map>
 
-#include <common/stream.hpp>
-#include <common/types.hpp>
+#include <common/stream.h>
+#include <common/types.h>
 #include "sce_decrypt.hpp"
 
 

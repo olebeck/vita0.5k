@@ -1,7 +1,7 @@
 #pragma once
 
-#include <common/types.hpp>
-#include <common/stream.hpp>
+#include <common/types.h>
+#include <common/stream.h>
 #include <botan/aes.h>
 
 Buffer zlib_decompress(Buffer b);

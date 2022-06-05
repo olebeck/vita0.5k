@@ -1,3 +1,6 @@
+#include <map>
+#include <string>
+
 const std::map<std::string, std::string> cp15_ops = {
     {"mrc p15 0 <Rd> c0 c0 0", "Read ID Code Register"},
     {"mrc p15 0 <Rd> c0 c0 1", "Read Cache Type Register"},

@@ -7,7 +7,7 @@
 #include <ctype.h>
 #include <botan/key_filt.h>
 
-#include <common/stream.hpp>
+#include <common/stream.h>
 
 struct Key {
     U64 minver;

@@ -3,12 +3,15 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include "types.hpp"
+#include "types.h"
 #include <botan/key_filt.h>
+
+class Stream;
 
 class Buffer : public std::vector<uint8_t> {
 public:
     Buffer(size_t size) : std::vector<uint8_t>(size) {}
+    Buffer(Stream& s);
     void Decrypt(Botan::Keyed_Filter* cipher);
 };
 
@@ -25,6 +28,13 @@ public:
     virtual uint64_t write(uint64_t size, const void* buffer) = 0;
     virtual void seek(uint64_t offset, StreamSeek mode) = 0;
     virtual uint64_t tell() const = 0;
+    uint64_t size() {
+        uint64_t pos = tell();
+        seek(0, StreamSeek::End);
+        uint64_t size = tell();
+        seek(pos, StreamSeek::Set);
+        return size;
+    }
 
     template<typename T> T read_t() {
         T v;
@@ -62,5 +72,7 @@ public:
     virtual uint64_t write(uint64_t size, const void* buffer) override;
     virtual void seek(uint64_t offset, StreamSeek mode) override;
     virtual uint64_t tell() const override;
-    const size_t size;
+    uint64_t size() {
+        return buffer.size();
+    }
 };

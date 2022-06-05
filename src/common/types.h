@@ -140,3 +140,48 @@ typedef struct {
     U64 sys_version;
     U64 field_18;
 } AppInfo;
+
+
+typedef struct KBLparam {
+    U16 version;
+    U16 size;
+    U32 current_fw;
+    U32 minimum_fw;
+    U32 unk0;
+    U32 unk1;
+    U8  unk2[0xC];
+    U8  qa_flags[0x10];
+    U8  boot_flags[0x10];
+    U8  DIPSwitches[0x20];
+    U32 DRAMBase;
+    U32 DRAMSize;
+    U32 unk3;
+    U32 BootTypeIndicator;
+    U8  OpenPsId[0x10];
+    U32 secure_kernel_enp_addr;
+    U32 secure_kernel_enp_size;
+    U32 context_auth_sm_self_addr;
+    U32 context_auth_sm_self_size;
+    U32 kprx_auth_sm_self_addr;
+    U32 kprx_auth_sm_self_size;
+    U32 prog_rvk_srvk_addr;
+    U32 prog_rvk_srvk_size;
+    U64 PsCode;
+    U32 __stack_chk_guard;
+    U32 unk4;
+    U8  SessionID[0x10];
+    U32 SleepFactor;
+    U32 WakupFactor;
+    U32 USB_info;
+    U32 BootControlsInfo;
+    U32 ResumeContext;
+    U32 HardwareInfo;
+    U32 PowerInfo;
+    U32 unk5;
+    U32 unk6_resume;
+    U32 unk7;
+    U8  HardwareFlags[0x10];
+    U32 BootLoaderRevision;
+    U32 SysrootMagic;
+    U8  CoredumpEncryptedSessionKey[0x20];
+} KBLparam;
